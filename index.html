@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8" />
+  <title>TODO – .NET + Docker + Postgres</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      max-width: 800px;
+      margin: 20px auto;
+      padding: 0 10px;
+      background: #f5f5f5;
+    }
+    h1 {
+      text-align: center;
+    }
+    form {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    input[type="text"] {
+      flex: 1;
+      padding: 8px;
+    }
+    button {
+      padding: 8px 12px;
+      cursor: pointer;
+    }
+    ul {
+      list-style: none;
+      padding: 0;
+    }
+    li {
+      background: white;
+      margin-bottom: 8px;
+      padding: 8px 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-radius: 4px;
+      border: 1px solid #ddd;
+    }
+    .todo-main {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .todo-title.done {
+      text-decoration: line-through;
+      color: #777;
+    }
+    .todo-meta {
+      font-size: 0.8rem;
+      color: #999;
+    }
+    .priority {
+      font-size: 0.8rem;
+      font-weight: bold;
+    }
+    .actions {
+      display: flex;
+      gap: 5px;
+    }
+  </style>
+</head>
+<body>
+  <h1>TODO – .NET + Docker + Postgres</h1>
+
+  <form id="todo-form">
+    <input type="text" id="todo-title" placeholder="Nowe zadanie.." required />
+    <select id="todo-priority">
+      <option value="1">Normalny</option>
+      <option value="2">Ważny</option>
+      <option value="3">Pilny</option>
+    </select>
+    <button type="submit">Dodaj</button>
+  </form>
+
+  <ul id="todo-list"></ul>
+
+  <script>
+    const apiBase = '/todos';
+    const listEl = document.getElementById('todo-list');
+    const formEl = document.getElementById('todo-form');
+    const titleInput = document.getElementById('todo-title');
+
+    async function loadTodos() {
+      listEl.innerHTML = '<li>Ładowanie...</li>';
+      try {
+        const res = await fetch(apiBase);
+        if (!res.ok) {
+          throw new Error('Błąd HTTP: ' + res.status);
+        }
+        const todos = await res.json();
+        renderTodos(todos);
+      } catch (err) {
+        listEl.innerHTML = '<li style="color:red;">Błąd: ' + err.message + '</li>';
+      }
+    }
+
+    function renderTodos(todos) {
+      if (!Array.isArray(todos) || todos.length === 0) {
+        listEl.innerHTML = '<li>Brak zadań. Dodaj pierwsze powyżej.</li>';
+        return;
+      }
+
+      listEl.innerHTML = '';
+
+      todos.forEach(todo => {
+        const li = document.createElement('li');
+
+        const main = document.createElement('div');
+        main.className = 'todo-main';
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = todo.isDone === true;
+
+        const title = document.createElement('span');
+        title.className = 'todo-title' + (todo.isDone ? ' done' : '');
+        title.textContent = todo.title;
+
+        const meta = document.createElement('div');
+        meta.className = 'todo-meta';
+        if (todo.createdAt) {
+          meta.textContent = 'Utworzono: ' + new Date(todo.createdAt).toLocaleString();
+        }
+
+        const pr = document.createElement('div');
+        pr.className = 'priority';
+        pr.textContent = 'Priorytet: ' + todo.priority;
+
+        main.appendChild(checkbox);
+        main.appendChild(title);
+        main.appendChild(meta);
+        main.appendChild(pr);
+
+        const actions = document.createElement('div');
+        actions.className = 'actions';
+
+        const toggleBtn = document.createElement('button');
+        toggleBtn.textContent = todo.isDone ? 'Cofnij' : 'Gotowe';
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.textContent = 'Usuń';
+
+        actions.appendChild(toggleBtn);
+        actions.appendChild(deleteBtn);
+
+        li.appendChild(main);
+        li.appendChild(actions);
+        listEl.appendChild(li);
+
+        toggleBtn.addEventListener('click', async () => {
+          await updateTodo(todo.id, {
+            ...todo,
+            isDone: !todo.isDone
+          });
+        });
+
+        deleteBtn.addEventListener('click', async () => {
+          if (confirm('Na pewno usunąć to zadanie?')) {
+            await deleteTodo(todo.id);
+          }
+        });
+
+        checkbox.addEventListener('change', async () => {
+          await updateTodo(todo.id, {
+            ...todo,
+            isDone: checkbox.checked
+          });
+        });
+      });
+    }
+
+    async function addTodo(title) {
+      try {
+        const res = await fetch(apiBase, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: title,
+            isDone: false,
+            priority: parseInt(document.getElementById('todo-priority').value)
+          })
+        });
+        if (!res.ok) {
+          throw new Error('Błąd HTTP: ' + res.status);
+        }
+        titleInput.value = '';
+        await loadTodos();
+      } catch (err) {
+        alert('Nie udało się dodać zadania: ' + err.message);
+      }
+    }
+
+    async function updateTodo(id, todo) {
+      try {
+        const res = await fetch(`${apiBase}/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(todo)
+        });
+        if (!res.ok) {
+          throw new Error('Błąd HTTP: ' + res.status);
+        }
+        await loadTodos();
+      } catch (err) {
+        alert('Nie udało się zaktualizować zadania: ' + err.message);
+      }
+    }
+
+    async function deleteTodo(id) {
+      try {
+        const res = await fetch(`${apiBase}/${id}`, {
+          method: 'DELETE'
+        });
+        if (!res.ok) {
+          throw new Error('Błąd HTTP: ' + res.status);
+        }
+        await loadTodos();
+      } catch (err) {
+        alert('Nie udało się usunąć zadania: ' + err.message);
+      }
+    }
+
+    formEl.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const title = titleInput.value.trim();
+      if (!title) return;
+      await addTodo(title);
+    });
+
+    loadTodos();
+  </script>
+</body>
+</html>
